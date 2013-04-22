@@ -455,9 +455,12 @@ class BlockGrid(object):
         return grid
 
     def __iter__(self):
-        for r in xrange(self.height):
-            for c in xrange(self.width):
-                yield self[r, c]
+        for index in itertools.product(*[range(n) for n in self.shape]):
+            x = self._grid
+            for i in index:
+                x = x[i]
+            x._index = index
+            yield x
 
     def animate(self, stop_time=0.2):
         """
@@ -719,11 +722,6 @@ class ImageGrid(BlockGrid):
         new_grid = [[self[c, r] for c in cols] for r in rows]
 
         return new_grid
-
-    def __iter__(self):
-        for col in xrange(self.width):
-            for row in xrange(self.height):
-                yield self[col, row]
 
     def _repr_html_(self):
         rows = range(self.height)
