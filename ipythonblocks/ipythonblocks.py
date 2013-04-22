@@ -268,14 +268,17 @@ class BlockGrid(object):
     """
 
     def __init__(self, width, height=None, fill=(0, 0, 0),
-                 block_size=20, lines_on=True):
+                 block_size=20, lines_on=True, grid=None):
         if height is None:
             self._shape = (width,)
         else:
             self._shape = (height, width)
         self._block_size = block_size
         self.lines_on = lines_on
-        self._initialize_grid(fill)
+        if grid is None:
+            self._initialize_grid(fill)
+        else:
+            self._grid = grid
 
     def _initialize_grid(self, fill, shape=None):
         if shape is None:
@@ -332,10 +335,10 @@ class BlockGrid(object):
         new_width = len(grid[0])
         new_height = len(grid)
 
-        new_BG = self.__class__(new_width, new_height,
-                                block_size=self._block_size,
-                                lines_on=self._lines_on)
-        new_BG._grid = grid
+        new_BG = self.__class__(
+            width=new_width, height=new_height,
+            block_size=self._block_size,
+            lines_on=self._lines_on, grid=grid)
 
         return new_BG
 
@@ -621,10 +624,8 @@ class ImageGrid(BlockGrid):
 
     """
 
-    def __init__(self, width, height, fill=(0, 0, 0),
-                 block_size=20, lines_on=True, origin='lower-left'):
-        super(ImageGrid, self).__init__(width, height, fill,
-                                        block_size, lines_on)
+    def __init__(self, origin='lower-left', **kwargs):
+        super(ImageGrid, self).__init__(**kwargs)
 
         if origin not in ('lower-left', 'upper-left'):
             s = "origin keyword must be one of {'lower-left', 'upper-left'}."
