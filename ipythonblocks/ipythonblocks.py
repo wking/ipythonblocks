@@ -347,15 +347,18 @@ class BlockGrid(object):
         Make a new grid from a list of lists of Block objects.
 
         """
-        new_width = len(grid[0])
-        new_height = len(grid)
+        shape = []
+        g = grid
+        while not isinstance(g, Block):
+            shape.append(len(g))
+            g = g[0]
 
-        new_BG = self.__class__(
-            width=new_width, height=new_height,
-            block_size=self._block_size,
-            lines_on=self._lines_on, grid=grid)
+        BG = self.__class__(width=0, grid=[])
+        BG.__setstate__(self.__getstate__())
+        BG._shape = tuple(shape)
+        BG._grid = grid
+        return BG
 
-        return new_BG
 
     @staticmethod
     def _categorize_index(index):
@@ -391,6 +394,12 @@ class BlockGrid(object):
                 return _SINGLE_ITEM
 
         raise IndexError('Invalid index.')
+
+    def __getstate__(self):
+        return self.__dict__.copy()
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
 
     def __getitem__(self, index):
         ind_cat = self._categorize_index(index)
@@ -629,13 +638,6 @@ class ImageGrid(BlockGrid):
             raise ValueError(s)
 
         self._origin = origin
-
-    def _initialize_grid(self, fill):
-        grid = [[Pixel(*fill, size=self._block_size)
-                for col in xrange(self.width)]
-                for row in xrange(self.height)]
-
-        self._grid = grid
 
     @property
     def block_size(self):
