@@ -277,12 +277,15 @@ class BlockGrid(object):
         self.lines_on = lines_on
         self._initialize_grid(fill)
 
-    def _initialize_grid(self, fill):
-        grid = [[Block(*fill, size=self._block_size)
-                for col in xrange(self.width)]
-                for row in xrange(self.height)]
-
-        self._grid = grid
+    def _initialize_grid(self, fill, shape=None):
+        if shape is None:
+            self._grid = self._initialize_grid(fill=fill, shape=self.shape)
+        elif len(shape) == 1:  # inner-most loop
+            return [Block(*fill, size=self._block_size)
+                    for i in range(shape[0])]
+        else:  # outer or middle loop
+            return [self._initialize_grid(fill=fill, shape=shape[1:])
+                    for i in range(shape[0])]
 
     @property
     def width(self):
