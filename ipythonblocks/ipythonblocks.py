@@ -40,7 +40,7 @@ _TR = '<tr>{0}</tr>'
 _TD = ('<td title="{0}" style="width: {1}px; height: {1}px;'
        'background-color: {2};"></td>')
 _RGB = 'rgb({0}, {1}, {2})'
-_TITLE = 'Index: [{0}, {1}]&#10;Color: ({2}, {3}, {4})'
+_TITLE = 'Index: [{0}]&#10;Color: ({1}, {2}, {3})'
 
 _SINGLE_ITEM = 'single item'
 _SINGLE_ROW = 'single row'
@@ -102,6 +102,9 @@ class Block(object):
     rgb : tuple of int
         Tuple of (red, green, blue) values. Can be used to set all the colors
         at once.
+    index : tuple of int
+        The generalized row-major index of this `Block`.  For blocks
+        in a two dimensional grid, this is (row, column).
     row, col : int
         The zero-based grid position of this `Block`.
     size : int
@@ -109,6 +112,7 @@ class Block(object):
         changed by modifying this attribute. Note that one is the lower limit.
 
     """
+    _row_major = True
 
     def __init__(self, red, green, blue, size=20):
         self.red = red
@@ -116,8 +120,7 @@ class Block(object):
         self.blue = blue
         self.size = size
 
-        self._row = None
-        self._col = None
+        self._index = None
 
     @staticmethod
     def _check_value(value):
@@ -171,12 +174,25 @@ class Block(object):
         self.red, self.green, self.blue = colors
 
     @property
+    def index(self):
+        if self._index is not None:
+            if self._row_major:
+                return self._index
+            return tuple(reversed(self._index))
+
+    def index_string(self):
+        if self._index is not None:
+            return ', '.join(str(i) for i in self.index)
+
+    @property
     def row(self):
-        return self._row
+        if self._index is not None and len(self._index) > 1:
+            return self._index[-2]
 
     @property
     def col(self):
-        return self._col
+        if self._index is not None:
+            return self._index[-1]
 
     @property
     def size(self):
@@ -206,7 +222,7 @@ class Block(object):
         The HTML for a table cell with the background color of this Block.
 
         """
-        title = _TITLE.format(self._row, self._col,
+        title = _TITLE.format(self.index_string(),
                               self._red, self._green, self._blue)
         rgb = _RGB.format(self._red, self._green, self._blue)
         return _TD.format(title, self._size, rgb)
@@ -224,8 +240,8 @@ class Block(object):
                                              self._blue)]
 
         # add position information if we have it
-        if self._row is not None:
-            s[0] += ' [{0}, {1}]'.format(self._row, self._col)
+        if self.row is not None:
+            s[0] += ' [{}]'.format(self.index_string())
 
         return os.linesep.join(s)
 
@@ -298,7 +314,6 @@ class BlockGrid(object):
     def height(self):
         if len(self._shape) > 1:
             return self._shape[-2]
-        return None
 
     @property
     def shape(self):
@@ -385,7 +400,7 @@ class BlockGrid(object):
 
         elif ind_cat == _SINGLE_ITEM:
             block = self._grid[index[0]][index[1]]
-            block._row, block._col = index
+            block._index = index
             return block
 
         elif ind_cat == _ROW_SLICE:
@@ -544,13 +559,15 @@ class BlockGrid(object):
 
 
 class Pixel(Block):
+    _row_major = False
+
     @property
     def x(self):
         """
         Horizontal coordinate of Pixel.
 
         """
-        return self._col
+        return self.col
 
     @property
     def y(self):
@@ -558,30 +575,7 @@ class Pixel(Block):
         Vertical coordinate of Pixel.
 
         """
-        return self._row
-
-    @property
-    def _td(self):
-        """
-        The HTML for a table cell with the background color of this Pixel.
-
-        """
-        title = _TITLE.format(self._col, self._row,
-                              self._red, self._green, self._blue)
-        rgb = _RGB.format(self._red, self._green, self._blue)
-        return _TD.format(title, self._size, rgb)
-
-    def __str__(self):
-        s = ['{0}'.format(self.__class__.__name__),
-             'Color: ({0}, {1}, {2})'.format(self._red,
-                                             self._green,
-                                             self._blue)]
-
-        # add position information if we have it
-        if self._row is not None:
-            s[0] += ' [{0}, {1}]'.format(self._col, self._row)
-
-        return os.linesep.join(s)
+        return self.row
 
 
 class ImageGrid(BlockGrid):
@@ -680,7 +674,7 @@ class ImageGrid(BlockGrid):
         if ind_cat == _SINGLE_ITEM:
             real_index = self._transform_index(index)
             pixel = self._grid[real_index[0]][real_index[1]]
-            pixel._col, pixel._row = index
+            pixel._index = reversed(index)
             return pixel
 
         elif ind_cat == _DOUBLE_SLICE:

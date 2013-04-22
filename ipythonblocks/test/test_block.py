@@ -127,10 +127,9 @@ def test_td(basic_block):
     """
     bb = basic_block
 
-    bb._row = 1
-    bb._col = 2
+    bb._index = (1, 2)
 
-    title = ipythonblocks._TITLE.format(bb._row, bb._col,
+    title = ipythonblocks._TITLE.format(bb.index_string(),
                                         bb.red, bb.green, bb.blue)
     rgb = ipythonblocks._RGB.format(bb.red, bb.green, bb.blue)
     td = ipythonblocks._TD.format(title, bb.size, rgb)
@@ -173,8 +172,7 @@ def test_str2(basic_block):
 
     """
     bb = basic_block
-    bb._row = 8
-    bb._col = 9
+    bb._index = (8, 9)
 
     s = os.linesep.join(['Block [8, 9]', 'Color: (5, 6, 7)'])
 
