@@ -255,7 +255,9 @@ class BlockGrid(object):
     height : int
         Number of blocks along the height of the grid.
     shape : tuple of int
-        A tuple of (width, height).
+        Shape of created array.  For a one dimensional grid, this will
+        be (length,).  For a two dimensional grid, this will be
+        (height, width).
     block_size : int
         Length of the sides of grid blocks in pixels. The block size can be
         changed by modifying this attribute. Note that one is the lower limit.
@@ -265,10 +267,12 @@ class BlockGrid(object):
 
     """
 
-    def __init__(self, width, height, fill=(0, 0, 0),
+    def __init__(self, width, height=None, fill=(0, 0, 0),
                  block_size=20, lines_on=True):
-        self._width = width
-        self._height = height
+        if height is None:
+            self._shape = (width,)
+        else:
+            self._shape = (height, width)
         self._block_size = block_size
         self.lines_on = lines_on
         self._initialize_grid(fill)
@@ -282,15 +286,17 @@ class BlockGrid(object):
 
     @property
     def width(self):
-        return self._width
+        return self._shape[-1]
 
     @property
     def height(self):
-        return self._height
+        if len(self._shape) > 1:
+            return self._shape[-2]
+        return None
 
     @property
     def shape(self):
-        return (self._width, self._height)
+        return self._shape
 
     @property
     def block_size(self):
@@ -451,8 +457,8 @@ class BlockGrid(object):
         self.show()
 
     def _repr_html_(self):
-        rows = range(self._height)
-        cols = range(self._width)
+        rows = range(self.height)
+        cols = range(self.width)
 
         html = reduce(iadd,
                       (_TR.format(reduce(iadd,
@@ -599,7 +605,9 @@ class ImageGrid(BlockGrid):
     height : int
         Number of blocks along the height of the grid.
     shape : tuple of int
-        A tuple of (width, height).
+        Shape of created array.  For a one dimensional grid, this will
+        be (length,).  For a two dimensional grid, this will be
+        (height, width).
     block_size : int
         Length of the sides of grid blocks in pixels.
     lines_on : bool
@@ -653,7 +661,7 @@ class ImageGrid(BlockGrid):
         # now take into account that the ImageGrid origin may be lower-left,
         # while the ._grid origin is upper-left.
         if self._origin == 'lower-left':
-            new_ind[0] = self._height - new_ind[0] - 1
+            new_ind[0] = self.height - new_ind[0] - 1
 
         return tuple(new_ind)
 
@@ -704,11 +712,11 @@ class ImageGrid(BlockGrid):
             else:
                 cslice = slice(cslice, cslice + 1)
 
-        rows = range(self._height)[rslice]
+        rows = range(self.height)[rslice]
         if self._origin == 'lower-left':
             rows = rows[::-1]
 
-        cols = range(self._width)[cslice]
+        cols = range(self.width)[cslice]
 
         new_grid = [[self[c, r] for c in cols] for r in rows]
 
@@ -720,8 +728,8 @@ class ImageGrid(BlockGrid):
                 yield self[col, row]
 
     def _repr_html_(self):
-        rows = range(self._height)
-        cols = range(self._width)
+        rows = range(self.height)
+        cols = range(self.width)
 
         if self._origin == 'lower-left':
             rows = rows[::-1]

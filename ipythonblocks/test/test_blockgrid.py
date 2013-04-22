@@ -30,7 +30,7 @@ def test_basic_api(basic_grid):
     with pytest.raises(AttributeError):
         bg.height = 20
 
-    assert bg.shape == (5, 6)
+    assert bg.shape == (6, 5)
     assert bg.block_size == 20
     assert bg.lines_on is True
 
@@ -144,7 +144,7 @@ def test_str(basic_grid):
     """
     bg = basic_grid
 
-    s = os.linesep.join(['BlockGrid', 'Shape: (5, 6)'])
+    s = os.linesep.join(['BlockGrid', 'Shape: (6, 5)'])
 
     assert bg.__str__() == s
 
@@ -221,25 +221,25 @@ def test_getitem(basic_grid):
     ng = bg[2]
 
     assert isinstance(ng, ipythonblocks.BlockGrid)
-    assert ng.shape == (bg.width, 1)
+    assert ng.shape == (1, bg.width)
 
     # two rows
     ng = bg[1:3]
 
     assert isinstance(ng, ipythonblocks.BlockGrid)
-    assert ng.shape == (bg.width, 2)
+    assert ng.shape == (2, bg.width)
 
     # one row via a slice
     ng = bg[2, :]
 
     assert isinstance(ng, ipythonblocks.BlockGrid)
-    assert ng.shape == (bg.width, 1)
+    assert ng.shape == (1, bg.width)
 
     # one column
     ng = bg[:, 2]
 
     assert isinstance(ng, ipythonblocks.BlockGrid)
-    assert ng.shape == (1, bg.height)
+    assert ng.shape == (bg.height, 1)
 
     # 2 x 2 subgrid
     ng = bg[:2, :2]
@@ -258,12 +258,12 @@ def test_getitem(basic_grid):
     ng = bg[-1, :]
 
     assert isinstance(ng, ipythonblocks.BlockGrid)
-    assert ng.shape == (bg.width, 1)
+    assert ng.shape == (1, bg.width)
 
     ng = bg[1:4, -1]
 
     assert isinstance(ng, ipythonblocks.BlockGrid)
-    assert ng.shape == (1, 3)
+    assert ng.shape == (3, 1)
 
 
 def test_setitem(basic_grid):
