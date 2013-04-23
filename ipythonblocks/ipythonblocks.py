@@ -37,7 +37,7 @@ _TR = '<tr>{0}</tr>'
 _TD = ('<td title="{0}" style="width: {1}px; height: {1}px;'
        'background-color: {2};"></td>')
 _RGB = 'rgb({0}, {1}, {2})'
-_TITLE = 'Index: [{0}, {1}]&#10;Color: ({2}, {3}, {4})'
+_TITLE = 'Index: [{0}]&#10;Color: ({1}, {2}, {3})'
 
 _SINGLE_ITEM = 'single item'
 _SINGLE_ROW = 'single row'
@@ -80,7 +80,68 @@ def embed_colorpicker():
     display(HTML(iframe))
 
 
-class Block(object):
+class _Item(object):
+    """
+    An item in an `_NDArray`.
+
+    This class deals with indexing boilerplate for data stored in
+    _NDArrays.
+
+    Parameters
+    ----------
+    index : tuple of int, optional
+        The index of this `_Item` in its parent grid.  For items in a
+        two dimensional, generalized row-major grid, this is (row,
+        column).  For items in a column-major grid, this is (column,
+        row).
+    row_major : bool, optional
+        Whether or not the item index is in row-major order.
+
+    Attributes
+    ----------
+    index : None or tuple of int
+        Same as the the `index` parameter.
+    row, col : None or int
+        The zero-based grid position of this `_Item`.  For
+        one-dimensional grids, the non-contiguous term (rows in
+        row-major grids) will be `None`.
+    """
+    def __init__(self, index=None, row_major=True):
+        if index is not None:
+            if not row_major:
+                index = reversed(index)  # always use row-major internally
+            index = tuple(index)
+        self._index = index
+        self._row_major = row_major
+
+    @property
+    def index(self):
+        if self._index is not None:
+            if self._row_major:
+                return self._index
+            return tuple(reversed(self._index))
+
+    def index_string(self):
+        if self._index is not None:
+            return ', '.join(str(i) for i in self.index)
+
+    @property
+    def row(self):
+        if self._index is not None:
+            if len(self._index) > 1:
+                return self._index[-2]
+            elif len(self._index) == 1 and not self._row_major:
+                return self._index[-1]
+
+    @property
+    def col(self):
+        if self._index is not None:
+            if (len(self._index) > 1 or
+                    (len(self._index) == 1 and self._row_major)):
+                return self._index[-1]
+
+
+class Block(_Item):
     """
     A colored square.
 
@@ -99,22 +160,27 @@ class Block(object):
     rgb : tuple of int
         Tuple of (red, green, blue) values. Can be used to set all the colors
         at once.
-    row, col : int
-        The zero-based grid position of this `Block`.
     size : int
         Length of the sides of this block in pixels. The block size can be
         changed by modifying this attribute. Note that one is the lower limit.
-
+    index : tuple of int, optional
+        The index of this `Block` in its parent grid.  For items in a
+        two dimensional, generalized row-major grid, this is (row,
+        column).  For items in a column-major grid, this is (column,
+        row).
+    row, col : None or int
+        The zero-based grid position of this `_Item`.  For
+        one-dimensional grids, the non-contiguous term (rows in
+        row-major grids) will be `None`.
     """
+    _row_major=True
 
     def __init__(self, red, green, blue, size=20):
         self.red = red
         self.green = green
         self.blue = blue
         self.size = size
-
-        self._row = None
-        self._col = None
+        super(Block, self).__init__(row_major=self._row_major)
 
     @staticmethod
     def _check_value(value):
@@ -168,14 +234,6 @@ class Block(object):
         self.red, self.green, self.blue = colors
 
     @property
-    def row(self):
-        return self._row
-
-    @property
-    def col(self):
-        return self._col
-
-    @property
     def size(self):
         return self._size
 
@@ -203,8 +261,8 @@ class Block(object):
         The HTML for a table cell with the background color of this Block.
 
         """
-        title = _TITLE.format(self._row, self._col,
-                              self._red, self._green, self._blue)
+        title = _TITLE.format(
+            self.index_string(), self._red, self._green, self._blue)
         rgb = _RGB.format(self._red, self._green, self._blue)
         return _TD.format(title, self._size, rgb)
 
@@ -221,8 +279,8 @@ class Block(object):
                                              self._blue)]
 
         # add position information if we have it
-        if self._row is not None:
-            s[0] += ' [{0}, {1}]'.format(self._row, self._col)
+        if self.row is not None:
+            s[0] += ' [{0}]'.format(self.index_string())
 
         return os.linesep.join(s)
 
@@ -370,7 +428,7 @@ class BlockGrid(object):
 
         elif ind_cat == _SINGLE_ITEM:
             block = self._grid[index[0]][index[1]]
-            block._row, block._col = index
+            block._index = index
             return block
 
         elif ind_cat == _ROW_SLICE:
@@ -529,13 +587,15 @@ class BlockGrid(object):
 
 
 class Pixel(Block):
+    _row_major = False
+
     @property
     def x(self):
         """
         Horizontal coordinate of Pixel.
 
         """
-        return self._col
+        return self.col
 
     @property
     def y(self):
@@ -543,30 +603,7 @@ class Pixel(Block):
         Vertical coordinate of Pixel.
 
         """
-        return self._row
-
-    @property
-    def _td(self):
-        """
-        The HTML for a table cell with the background color of this Pixel.
-
-        """
-        title = _TITLE.format(self._col, self._row,
-                              self._red, self._green, self._blue)
-        rgb = _RGB.format(self._red, self._green, self._blue)
-        return _TD.format(title, self._size, rgb)
-
-    def __str__(self):
-        s = ['{0}'.format(self.__class__.__name__),
-             'Color: ({0}, {1}, {2})'.format(self._red,
-                                             self._green,
-                                             self._blue)]
-
-        # add position information if we have it
-        if self._row is not None:
-            s[0] += ' [{0}, {1}]'.format(self._col, self._row)
-
-        return os.linesep.join(s)
+        return self.row
 
 
 class ImageGrid(BlockGrid):
@@ -665,7 +702,7 @@ class ImageGrid(BlockGrid):
         if ind_cat == _SINGLE_ITEM:
             real_index = self._transform_index(index)
             pixel = self._grid[real_index[0]][real_index[1]]
-            pixel._col, pixel._row = index
+            pixel._index = tuple(reversed(index))
             return pixel
 
         elif ind_cat == _DOUBLE_SLICE:

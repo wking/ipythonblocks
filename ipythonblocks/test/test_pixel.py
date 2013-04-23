@@ -19,8 +19,7 @@ def test_xy(basic_pixel):
     assert bp.x is None
     assert bp.y is None
 
-    bp._row = 1
-    bp._col = 2
+    bp._index = (1, 2)
 
     assert bp.x == 2
     assert bp.y == 1
@@ -33,11 +32,10 @@ def test_td(basic_pixel):
     """
     bp = basic_pixel
 
-    bp._row = 1
-    bp._col = 2
+    bp._index = (1, 2)
 
-    title = ipythonblocks._TITLE.format(bp._col, bp._row,
-                                        bp.red, bp.green, bp.blue)
+    title = ipythonblocks._TITLE.format(
+        bp.index_string(), bp.red, bp.green, bp.blue)
     rgb = ipythonblocks._RGB.format(bp.red, bp.green, bp.blue)
     td = ipythonblocks._TD.format(title, bp.size, rgb)
 
@@ -62,8 +60,7 @@ def test_str2(basic_pixel):
 
     """
     bp = basic_pixel
-    bp._row = 8
-    bp._col = 9
+    bp._index = (8, 9)
 
     s = os.linesep.join(['Pixel [9, 8]', 'Color: (5, 6, 7)'])
 
