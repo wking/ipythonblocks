@@ -91,7 +91,7 @@ class _Item(object):
     ----------
     index : tuple of int, optional
         The index of this `_Item` in its parent grid.  For items in a
-        two dimensional, generalized row-major grid, this is (row,
+        two dimensional, generalized row-major grid, this is (rows,
         column).  For items in a column-major grid, this is (column,
         row).
     row_major : bool, optional
@@ -139,6 +139,294 @@ class _Item(object):
             if (len(self._index) > 1 or
                     (len(self._index) == 1 and self._row_major)):
                 return self._index[-1]
+
+    def to_array(self):
+        """
+        Return item data as an array for serialization.
+        """
+        return []
+
+
+class _NDArray(object):
+    """
+    An N-dimensional array _Items.
+
+    This class deals with indexing boilerplate.
+
+    Parameters
+    ----------
+    shape : tuple of int, optional
+        The size of the grid.  For items in a two dimensional,
+        generalized row-major grid, this is (height, width).  For
+        items in a column-major grid, this is (width, height).
+    grid : TODO
+        TODO
+    row_major : bool, optional
+        Whether or not the grid is in row-major order.
+
+    Attributes
+    ----------
+    width : int
+        Number of blocks along the width of the grid.
+    height : int
+        Number of blocks along the height of the grid.
+    shape : tuple of int
+        Same as the the `shape` parameter.
+    """
+    def __init__(self, shape=None, grid=None, row_major=True, fill_fn=None,
+                 fill_args=tuple(), fill_kwargs={}):
+        if shape is not None:
+            if not row_major:
+                shape = reversed(shape)  # always use row-major internally
+            shape = tuple(shape)
+        self._shape = shape
+        self._row_major = row_major
+        if grid is None:
+            grid = self._fill_grid(
+                fill_fn=fill_fn, fill_args=fill_args, fill_kwargs=fill_kwargs)
+        self._grid = grid
+
+    def _fill_grid(self, fill_fn=None, fill_args=[], fill_kwargs={},
+                   shape=None):
+        if fill_fn is None:
+            fill_fn = _Item
+        kwargs = {
+            'fill_fn': fill_fn,
+            'fill_args': fill_args,
+            'fill_kwargs': fill_kwargs
+            }
+        if shape is None:
+            return self._fill_grid(shape=self.shape, **kwargs)
+        elif len(shape) == 1:  # inner-most loop
+            return [fill_fn(*fill_args, **fill_kwargs)
+                    for i in range(shape[0])]
+        else:  # outer or middle loop
+            return [self._fill_grid(shape=shape[1:], **kwargs)
+                    for i in range(shape[0])]
+
+    @property
+    def shape(self):
+        if self._shape is not None:
+            if self._row_major:
+                return self._shape
+            return tuple(reversed(self._shape))
+
+    @property
+    def height(self):
+        if self._shape is not None:
+            if len(self._shape) > 1:
+                return self._shape[-2]
+            elif len(self._shape) == 1 and not self._row_major:
+                return self._shape[-1]
+
+    @property
+    def width(self):
+        if self._shape is not None:
+            if (len(self._shape) > 1 or
+                    (len(self._shape) == 1 and self._row_major)):
+                return self._shape[-1]
+    
+    def __str__(self):
+        s = ['{0}'.format(self.__class__.__name__),
+             'Shape: {0}'.format(self.shape)]
+
+        return os.linesep.join(s)
+
+    def __getstate__(self):
+        return self.__dict__
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+
+    @staticmethod
+    def _categorize_index(index):
+        """
+        Used by __getitem__ and __setitem__ to determine whether the user
+        is asking for a single item, single row, or some kind of slice.
+
+        """
+        if isinstance(index, int):
+            return _SINGLE_ROW
+
+        elif isinstance(index, slice):
+            return _ROW_SLICE
+
+        elif isinstance(index, tuple):
+            if len(index) > 2:
+                s = 'Invalid index, too many dimensions.'
+                raise IndexError(s)
+
+            elif len(index) == 1:
+                s = 'Single indices must be integers, not tuple.'
+                raise TypeError(s)
+
+            if isinstance(index[0], slice):
+                if isinstance(index[1], (int, slice)):
+                    return _DOUBLE_SLICE
+
+            if isinstance(index[1], slice):
+                if isinstance(index[0], (int, slice)):
+                    return _DOUBLE_SLICE
+
+            elif isinstance(index[0], int) and isinstance(index[0], int):
+                return _SINGLE_ITEM
+
+        raise IndexError('Invalid index.')
+
+    @staticmethod
+    def _normalize_slice(index):
+        sl_height, sl_width = index
+
+        if isinstance(sl_width, int):
+            if sl_width == -1:
+                sl_width = slice(sl_width, None)
+            else:
+                sl_width = slice(sl_width, sl_width + 1)
+
+        if isinstance(sl_height, int):
+            if sl_height == -1:
+                sl_height = slice(sl_height, None)
+            else:
+                sl_height = slice(sl_height, sl_height + 1)
+
+        return (sl_height, sl_width)
+
+    def __getitem__(self, index):
+        ind_cat = self._categorize_index(index)
+
+        if ind_cat == _SINGLE_ROW:
+            return self._view_from_grid([self._grid[index]])
+
+        elif ind_cat == _SINGLE_ITEM:
+            item = self._grid[index[0]][index[1]]
+            if hasattr(item, '_index'):
+                item._index = index
+            return item
+
+        elif ind_cat == _ROW_SLICE:
+            return self._view_from_grid(self._grid[index])
+
+        elif ind_cat == _DOUBLE_SLICE:
+            sl_height, sl_width = self._normalize_slice(index)
+            rows = self._grid[sl_height]
+            new_grid = [r[sl_width] for r in rows]
+            return self._view_from_grid(new_grid)
+
+    def __setitem__(self, index, value):
+        ind_cat = self._categorize_index(index)
+
+        if ind_cat == _SINGLE_ROW:
+            for i,item in enumerate(self._grid[index]):
+                self._grid[index][i] = self._set_item(item=item, value=value)
+
+        elif ind_cat == _SINGLE_ITEM:
+            self._grid[index[0]][index[1]] = self._set_item(
+                item=self._grid[index[0]][index[1]], value=value)
+
+        elif ind_cat == _ROW_SLICE:
+            self._grid[index] = [
+                self._set_item(item=item, value=value)
+                for item in self._grid[index]]
+
+        elif ind_cat == _DOUBLE_SLICE:
+            sl_height, sl_width = self._normalize_slice(index)
+            rows = self._grid[sl_height]
+            sub_grid = [r[sl_width] for r in rows]
+            for i,row in enumerate(rows):  # TODO: list slices are *not* views
+                for j,item in enumerate(row):
+                    sub_grid[i][j] = self._set_item(item=item, value=value)
+
+    def _set_item(self, item, value):
+        return value
+
+    def _view_from_grid(self, grid):
+        """
+        Make a new grid from a list of lists of `_Item` objects.
+
+        """
+        shape = []
+        g = grid
+        while isinstance(g, (list, tuple)):
+            shape.append(len(g))
+            g = g[0]
+
+        array = self.__class__(grid=[])
+        array.__setstate__(self.__getstate__())
+        array._shape = tuple(shape)
+        array._grid = grid
+        return array
+
+    def _get_double_slice(self, index):
+        sl_height, sl_width = index
+
+        if isinstance(sl_width, int):
+            if sl_width == -1:
+                sl_width = slice(sl_width, None)
+            else:
+                sl_width = slice(sl_width, sl_width + 1)
+
+        if isinstance(sl_height, int):
+            if sl_height == -1:
+                sl_height = slice(sl_height, None)
+            else:
+                sl_height = slice(sl_height, sl_height + 1)
+
+        rows = self._grid[sl_height]
+        grid = [r[sl_width] for r in rows]
+
+        return grid
+
+    def __iter__(self):
+        for index in itertools.product(*[range(n) for n in self.shape]):
+            x = self._grid
+            for i in index:
+                x = x[i]
+            if hasattr(x, '_index'):
+                x._index = index
+            yield x
+
+    def to_text(self, filename=None):
+        """
+        Write a text file with the size and item information for this array.
+
+        If no file name is given the text is sent to stdout.
+
+        Parameters
+        ----------
+        filename : str, optional
+            File into which data will be written. Will be overwritten if
+            it already exists.
+
+        """
+        if filename:
+            f = open(filename, 'w')
+        else:
+            f = sys.stdout
+
+        if self._row_major:
+            shape_order = '(..., height, width)'
+        else:
+            shape_order = '(width, height, ...)'
+        s = ['# shape {0}'.format(shape_order),
+             ' '.join(str(x) for x in self.shape),
+             '# row-major', str(self._row_major),
+             '# index data']
+        f.write(os.linesep.join(s) + os.linesep)
+
+        for item in self:
+            things = [
+                str(x) for x in itertools.chain(item.index, item.to_array())]
+            f.write(' '.join(things) + os.linesep)
+
+        if filename:
+            f.close()
+
+    def copy(self):
+        """
+        Returns an independent copy of this `_NDArray`.
+
+        """
+        return copy.deepcopy(self)
 
 
 class Block(_Item):
@@ -285,7 +573,7 @@ class Block(_Item):
         return os.linesep.join(s)
 
 
-class BlockGrid(object):
+class BlockGrid(_NDArray):
     """
     A grid of blocks whose colors can be individually controlled.
 
@@ -310,7 +598,9 @@ class BlockGrid(object):
     height : int
         Number of blocks along the height of the grid.
     shape : tuple of int
-        A tuple of (width, height).
+        The size of the grid.  For items in a two dimensional,
+        generalized row-major grid, this is (height, width).  For
+        items in a column-major grid, this is (width, height).
     block_size : int
         Length of the sides of grid blocks in pixels. The block size can be
         changed by modifying this attribute. Note that one is the lower limit.
@@ -319,33 +609,18 @@ class BlockGrid(object):
         This attribute can used to toggle the whether the lines appear.
 
     """
+    _row_major = True
 
     def __init__(self, width, height, fill=(0, 0, 0),
                  block_size=20, lines_on=True):
-        self._width = width
-        self._height = height
         self._block_size = block_size
         self.lines_on = lines_on
+        if self._row_major:
+            shape = (height, width)
+        else:
+            shape = (width, height)
+        super(BlockGrid, self).__init__(shape=shape, row_major=self._row_major)
         self._initialize_grid(fill)
-
-    def _initialize_grid(self, fill):
-        grid = [[Block(*fill, size=self._block_size)
-                for col in range(self.width)]
-                for row in range(self.height)]
-
-        self._grid = grid
-
-    @property
-    def width(self):
-        return self._width
-
-    @property
-    def height(self):
-        return self._height
-
-    @property
-    def shape(self):
-        return (self._width, self._height)
 
     @property
     def block_size(self):
@@ -370,122 +645,15 @@ class BlockGrid(object):
 
         self._lines_on = value
 
-    def _view_from_grid(self, grid):
-        """
-        Make a new grid from a list of lists of Block objects.
-
-        """
-        new_width = len(grid[0])
-        new_height = len(grid)
-
-        new_BG = self.__class__(new_width, new_height,
-                                block_size=self._block_size,
-                                lines_on=self._lines_on)
-        new_BG._grid = grid
-
-        return new_BG
-
-    @staticmethod
-    def _categorize_index(index):
-        """
-        Used by __getitem__ and __setitem__ to determine whether the user
-        is asking for a single item, single row, or some kind of slice.
-
-        """
-        if isinstance(index, int):
-            return _SINGLE_ROW
-
-        elif isinstance(index, slice):
-            return _ROW_SLICE
-
-        elif isinstance(index, tuple):
-            if len(index) > 2:
-                s = 'Invalid index, too many dimensions.'
-                raise IndexError(s)
-
-            elif len(index) == 1:
-                s = 'Single indices must be integers, not tuple.'
-                raise TypeError(s)
-
-            if isinstance(index[0], slice):
-                if isinstance(index[1], (int, slice)):
-                    return _DOUBLE_SLICE
-
-            if isinstance(index[1], slice):
-                if isinstance(index[0], (int, slice)):
-                    return _DOUBLE_SLICE
-
-            elif isinstance(index[0], int) and isinstance(index[0], int):
-                return _SINGLE_ITEM
-
-        raise IndexError('Invalid index.')
-
-    def __getitem__(self, index):
-        ind_cat = self._categorize_index(index)
-
-        if ind_cat == _SINGLE_ROW:
-            return self._view_from_grid([self._grid[index]])
-
-        elif ind_cat == _SINGLE_ITEM:
-            block = self._grid[index[0]][index[1]]
-            block._index = index
-            return block
-
-        elif ind_cat == _ROW_SLICE:
-            return self._view_from_grid(self._grid[index])
-
-        elif ind_cat == _DOUBLE_SLICE:
-            new_grid = self._get_double_slice(index)
-            return self._view_from_grid(new_grid)
-
     def __setitem__(self, index, value):
         if len(value) != 3:
             s = 'Assigned value must have three integers. got {0}.'
             raise ValueError(s.format(value))
+        super(BlockGrid, self).__setitem__(index, value)
 
-        ind_cat = self._categorize_index(index)
-
-        if ind_cat == _SINGLE_ROW:
-            for b in self._grid[index]:
-                b.set_colors(*value)
-
-        elif ind_cat == _SINGLE_ITEM:
-            self._grid[index[0]][index[1]].set_colors(*value)
-
-        else:
-            if ind_cat == _ROW_SLICE:
-                sub_grid = self._grid[index]
-
-            elif ind_cat == _DOUBLE_SLICE:
-                sub_grid = self._get_double_slice(index)
-
-            for b in itertools.chain(*sub_grid):
-                b.set_colors(*value)
-
-    def _get_double_slice(self, index):
-        sl_height, sl_width = index
-
-        if isinstance(sl_width, int):
-            if sl_width == -1:
-                sl_width = slice(sl_width, None)
-            else:
-                sl_width = slice(sl_width, sl_width + 1)
-
-        if isinstance(sl_height, int):
-            if sl_height == -1:
-                sl_height = slice(sl_height, None)
-            else:
-                sl_height = slice(sl_height, sl_height + 1)
-
-        rows = self._grid[sl_height]
-        grid = [r[sl_width] for r in rows]
-
-        return grid
-
-    def __iter__(self):
-        for r in range(self.height):
-            for c in range(self.width):
-                yield self[r, c]
+    def _set_item(self, item, value):
+        item.set_colors(*value)
+        return item
 
     def animate(self, stop_time=0.2):
         """
@@ -506,8 +674,8 @@ class BlockGrid(object):
         self.show()
 
     def _repr_html_(self):
-        rows = range(self._height)
-        cols = range(self._width)
+        rows = range(self.height)
+        cols = range(self.width)
 
         html = reduce(iadd,
                       (_TR.format(reduce(iadd,
@@ -516,19 +684,6 @@ class BlockGrid(object):
                        for r in rows))
 
         return _TABLE.format(uuid.uuid4(), int(self._lines_on), html)
-
-    def __str__(self):
-        s = ['{0}'.format(self.__class__.__name__),
-             'Shape: {0}'.format(self.shape)]
-
-        return os.linesep.join(s)
-
-    def copy(self):
-        """
-        Returns an independent copy of this BlockGrid.
-
-        """
-        return copy.deepcopy(self)
 
     def show(self):
         """
@@ -633,7 +788,9 @@ class ImageGrid(BlockGrid):
     height : int
         Number of blocks along the height of the grid.
     shape : tuple of int
-        A tuple of (width, height).
+        The size of the grid.  For items in a two dimensional,
+        generalized row-major grid, this is (height, width).  For
+        items in a column-major grid, this is (width, height).
     block_size : int
         Length of the sides of grid blocks in pixels.
     lines_on : bool
@@ -643,6 +800,7 @@ class ImageGrid(BlockGrid):
         The location of the grid origin.
 
     """
+    _row_major = False
 
     def __init__(self, width, height, fill=(0, 0, 0),
                  block_size=20, lines_on=True, origin='lower-left'):
@@ -654,13 +812,6 @@ class ImageGrid(BlockGrid):
             raise ValueError(s)
 
         self._origin = origin
-
-    def _initialize_grid(self, fill):
-        grid = [[Pixel(*fill, size=self._block_size)
-                for col in range(self.width)]
-                for row in range(self.height)]
-
-        self._grid = grid
 
     @property
     def block_size(self):
@@ -687,7 +838,7 @@ class ImageGrid(BlockGrid):
         # now take into account that the ImageGrid origin may be lower-left,
         # while the ._grid origin is upper-left.
         if self._origin == 'lower-left':
-            new_ind[0] = self._height - new_ind[0] - 1
+            new_ind[0] = self.height - new_ind[0] - 1
 
         return tuple(new_ind)
 
@@ -738,24 +889,19 @@ class ImageGrid(BlockGrid):
             else:
                 cslice = slice(cslice, cslice + 1)
 
-        rows = range(self._height)[rslice]
+        rows = range(self.height)[rslice]
         if self._origin == 'lower-left':
             rows = rows[::-1]
 
-        cols = range(self._width)[cslice]
+        cols = range(self.width)[cslice]
 
         new_grid = [[self[c, r] for c in cols] for r in rows]
 
         return new_grid
 
-    def __iter__(self):
-        for col in range(self.width):
-            for row in range(self.height):
-                yield self[col, row]
-
     def _repr_html_(self):
-        rows = range(self._height)
-        cols = range(self._width)
+        rows = range(self.height)
+        cols = range(self.width)
 
         if self._origin == 'lower-left':
             rows = rows[::-1]
